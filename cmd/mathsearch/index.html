@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>mathsearch</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 -apple-system, system-ui, sans-serif; max-width: 960px;
+         margin: 1.5rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.3rem; }
+  h2 { font-size: 1rem; border-bottom: 1px solid rgba(128,128,128,.3); padding-bottom: .25rem; }
+  .muted { opacity: .6; }
+  .bar { display: flex; gap: .5rem; margin: .5rem 0; }
+  input[type=text] { flex: 1; padding: .6rem .8rem; font-size: 1rem;
+                     font-family: ui-monospace, monospace; }
+  button { padding: .4rem .7rem; font-size: .9rem; cursor: pointer; }
+  .tabs { display: flex; gap: .5rem; margin: 1rem 0 .5rem; }
+  .tabs button { border-radius: 6px; }
+  .tabs button.active { font-weight: 600; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+  .canon { font-family: ui-monospace, monospace; font-size: .8rem; opacity: .7;
+           word-break: break-all; margin: .5rem 0 1rem; }
+  .chips { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0; }
+  .chip { border: 1px solid rgba(128,128,128,.4); border-radius: 999px;
+          padding: .25rem .7rem; cursor: pointer; background: none; color: inherit; }
+  .chip.sel { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .chip .n { opacity: .6; margin-left: .3rem; font-size: .8em; }
+  .count { font-weight: 600; margin: .5rem 0; }
+  .hit { padding: .7rem 0; border-bottom: 1px solid rgba(128,128,128,.25); }
+  .hit .math { overflow-x: auto; }
+  .meta { font-size: .8rem; opacity: .65; margin-top: .3rem; font-family: ui-monospace, monospace; }
+  .score { display: inline-block; min-width: 3.2em; }
+  .exact .hit { background: rgba(0,160,0,.08); }
+  .err { color: #c00; }
+</style>
+</head>
+<body>
+<h1>mathsearch <span class="muted" id="count"></span></h1>
+
+<div class="tabs">
+  <button id="tab-filter" class="active" onclick="showTab('filter')">Progressive filter</button>
+  <button id="tab-formula" onclick="showTab('formula')">Search by formula</button>
+</div>
+
+<!-- Progressive faceted filter -->
+<section id="panel-filter" class="panel active">
+  <p class="muted">Narrow down by structure. Add facets until the result set is small enough to list.</p>
+  <div id="selected" class="chips"></div>
+  <div class="count" id="fcount"></div>
+  <h2>Refine</h2>
+  <div id="refine" class="chips"></div>
+  <div id="flist"></div>
+</section>
+
+<!-- Search by an example formula -->
+<section id="panel-formula" class="panel">
+  <form class="bar" id="form">
+    <input type="text" id="q" placeholder="Integrate[E^(-a x^2), {x, 0, Infinity}]" autocomplete="off">
+    <button type="submit">Search</button>
+  </form>
+  <div class="canon" id="canon"></div>
+  <div id="results"></div>
+</section>
+
+<script>
+const $ = s => document.querySelector(s);
+let facets = []; // selected facet tags
+
+function showTab(name) {
+  for (const t of ["filter", "formula"]) {
+    $("#tab-" + t).classList.toggle("active", t === name);
+    $("#panel-" + t).classList.toggle("active", t === name);
+  }
+}
+
+function renderMath(el, latex) {
+  let s = (latex || "").trim().replace(/^\$+/, "").replace(/\$+$/, "").replace(/[,.]\s*$/, "").trim();
+  try { window.katex ? katex.render(s, el, { throwOnError: false, displayMode: true }) : (el.textContent = s); }
+  catch (e) { el.textContent = s; }
+}
+
+function hit(r) {
+  const div = document.createElement("div");
+  div.className = "hit";
+  const math = document.createElement("div"); math.className = "math";
+  renderMath(math, r.latex); div.appendChild(math);
+  const meta = document.createElement("div"); meta.className = "meta";
+  meta.innerHTML = (r.score != null ? `<span class="score">${r.score.toFixed(3)}</span> ` : "")
+    + `${r.entry_id}.${r.side} · ${r.class || "?"} · ${r.source || ""}`;
+  div.appendChild(meta);
+  const mma = document.createElement("div"); mma.className = "meta"; mma.textContent = r.mma;
+  div.appendChild(mma);
+  return div;
+}
+
+// ---- Progressive filter ----
+async function refreshFacets() {
+  const qs = facets.map(f => "f=" + encodeURIComponent(f)).join("&");
+  const data = await (await fetch("/api/facets?" + qs)).json();
+
+  const sel = $("#selected"); sel.innerHTML = "";
+  facets.forEach(f => {
+    const b = document.createElement("button");
+    b.className = "chip sel"; b.textContent = "✓ " + f;
+    b.onclick = () => { facets = facets.filter(x => x !== f); refreshFacets(); };
+    sel.appendChild(b);
+  });
+  if (!facets.length) sel.innerHTML = '<span class="muted">no filters — showing everything</span>';
+
+  $("#fcount").textContent = `${data.total} formulas match`
+    + (data.total > data.limit ? ` — add more facets to see the list (≤ ${data.limit})` : "");
+
+  const ref = $("#refine"); ref.innerHTML = "";
+  (data.refine || []).forEach(fc => {
+    const b = document.createElement("button");
+    b.className = "chip";
+    b.innerHTML = `${fc.facet}<span class="n">${fc.count}</span>`;
+    b.onclick = () => { facets.push(fc.facet); refreshFacets(); };
+    ref.appendChild(b);
+  });
+
+  const list = $("#flist"); list.innerHTML = "";
+  if (data.hits) {
+    const h = document.createElement("h2"); h.textContent = `Results (${data.hits.length})`;
+    list.appendChild(h);
+    data.hits.forEach(r => list.appendChild(hit(r)));
+  }
+}
+
+// ---- Formula search ----
+function section(title, cls, items) {
+  const wrap = document.createElement("div"); wrap.className = "section " + cls;
+  const h = document.createElement("h2"); h.textContent = `${title} (${items.length})`;
+  wrap.appendChild(h);
+  items.forEach(r => wrap.appendChild(hit(r)));
+  return wrap;
+}
+async function search(q) {
+  const res = $("#results"); res.innerHTML = ""; $("#canon").textContent = "";
+  if (!q.trim()) return;
+  let data;
+  try { data = await (await fetch("/api/search?q=" + encodeURIComponent(q))).json(); }
+  catch (e) { res.innerHTML = `<div class="err">request failed</div>`; return; }
+  if (data.error) { res.innerHTML = `<div class="err">${data.error}</div>`; return; }
+  $("#canon").textContent = "canonical: " + data.query_canonical;
+  res.appendChild(section("Exact", "exact", data.exact || []));
+  res.appendChild(section("Fuzzy", "fuzzy", data.fuzzy || []));
+}
+$("#form").addEventListener("submit", e => {
+  e.preventDefault(); search($("#q").value);
+});
+
+fetch("/api/stats").then(r => r.json())
+  .then(d => { $("#count").textContent = d.count != null ? `· ${d.count} formulas` : ""; })
+  .catch(() => {});
+refreshFacets();
+</script>
+</body>
+</html>

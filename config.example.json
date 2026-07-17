@@ -1,0 +1,52 @@
+{
+  "database": "mathsearch.db",
+  "server": {
+    "addr": ":8080",
+    "read_timeout_sec": 15,
+    "write_timeout_sec": 30
+  },
+  "corpus": {
+    "roots": [
+      "~/Dev/Mathematica/MathRepo.git/DLMF.Work/json",
+      "~/Dev/Mathematica/MathRepo.git/Dieckmann.Work/dieckmann_corpus.verified.json",
+      "~/Dev/Mathematica/MathRepo.git/Gradstheyn_Ryzhik.Work/gr_corpus.verified.json"
+    ]
+  },
+  "search": {
+    "fuzzy_limit": 25,
+    "candidate_pool": 200
+  },
+  "auth": {
+    "enabled": true,
+    "jwt_secret": "CHANGE-ME-or-set-MATHSEARCH_JWT_SECRET",
+    "token_ttl_minutes": 60,
+    "users": [
+      {
+        "username": "admin",
+        "password_hash": "generate with: mathsearch hashpw \"your-password\""
+      }
+    ],
+    "oauth": {
+      "google": {
+        "client_id": "your-google-client-id.apps.googleusercontent.com",
+        "client_secret": "your-google-client-secret",
+        "redirect_url": "http://localhost:8080/auth/google/callback"
+      },
+      "facebook": {
+        "client_id": "your-facebook-app-id",
+        "client_secret": "your-facebook-app-secret",
+        "redirect_url": "http://localhost:8080/auth/facebook/callback"
+      },
+      "apple": {
+        "client_id": "your.apple.service.id",
+        "client_secret": "signed-es256-jwt-client-secret",
+        "redirect_url": "http://localhost:8080/auth/apple/callback"
+      }
+    },
+    "rate_limit": {
+      "requests_per_minute": 60,
+      "burst": 20,
+      "privileged_exempt": true
+    }
+  }
+}

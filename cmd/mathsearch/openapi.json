@@ -1,0 +1,193 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "mathsearch API",
+    "description": "Search a corpus of mathematical formulas exactly (canonical SHA-256 signature) and fuzzily (structural features), and manage formulas and their formal proofs.",
+    "version": "1.0.0"
+  },
+  "servers": [{ "url": "/" }],
+  "tags": [
+    { "name": "search", "description": "Public search and metadata" },
+    { "name": "auth", "description": "Authentication" },
+    { "name": "formulas", "description": "Formula management (authenticated)" },
+    { "name": "proofs", "description": "Formal proofs (Lean4 / Coq / Rocq)" }
+  ],
+  "paths": {
+    "/api/stats": {
+      "get": {
+        "tags": ["search"],
+        "summary": "Index statistics",
+        "responses": {
+          "200": {
+            "description": "counts",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Stats" } } }
+          }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "tags": ["search"],
+        "summary": "Search by a Mathematica-syntax formula",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "schema": { "type": "string" },
+            "description": "Formula in Mathematica syntax, e.g. Integrate[E^(-a x^2), {x,0,Infinity}]" }
+        ],
+        "responses": {
+          "200": {
+            "description": "exact and fuzzy hits (or an error field for a parse failure)",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SearchResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/facets": {
+      "get": {
+        "tags": ["search"],
+        "summary": "Progressive faceted filter",
+        "description": "Filter formulas by structural facets (is-integral, square-root, bessel, ...). Returns the match count, the facets available to refine further with counts, and — once the match set is at or below the limit — the matching formulas.",
+        "parameters": [
+          { "name": "f", "in": "query", "required": false, "explode": true,
+            "schema": { "type": "array", "items": { "type": "string" } },
+            "description": "Selected facet tags; repeat for AND, e.g. ?f=integral&f=bessel" }
+        ],
+        "responses": {
+          "200": {
+            "description": "facet counts and (when small enough) the list",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FacetResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/login": {
+      "post": {
+        "tags": ["auth"],
+        "summary": "Exchange credentials for a JWT",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Credentials" } } }
+        },
+        "responses": {
+          "200": { "description": "token", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TokenResponse" } } } },
+          "401": { "description": "invalid credentials" }
+        }
+      }
+    },
+    "/api/formulas": {
+      "post": {
+        "tags": ["formulas"],
+        "summary": "Add or update a formula entry (authenticated)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FormulaInput" } } }
+        },
+        "responses": {
+          "200": { "description": "indexed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AddResult" } } } },
+          "400": { "description": "parse or validation error" },
+          "401": { "description": "missing/invalid token" }
+        }
+      }
+    },
+    "/api/proofs/{entry_id}": {
+      "get": {
+        "tags": ["proofs"],
+        "summary": "Fetch the formal proof for an entry",
+        "parameters": [{ "name": "entry_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": {
+          "200": { "description": "proof", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Proof" } } } },
+          "404": { "description": "no proof" }
+        }
+      },
+      "put": {
+        "tags": ["proofs"],
+        "summary": "Attach or replace a formal proof (authenticated)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [{ "name": "entry_id", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProofInput" } } }
+        },
+        "responses": {
+          "200": { "description": "stored" },
+          "401": { "description": "missing/invalid token" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT" }
+    },
+    "schemas": {
+      "Stats": { "type": "object", "properties": { "count": { "type": "integer" } } },
+      "Hit": {
+        "type": "object",
+        "properties": {
+          "entry_id": { "type": "string" }, "side": { "type": "string" },
+          "label": { "type": "string" }, "source": { "type": "string" },
+          "class": { "type": "string" }, "latex": { "type": "string" },
+          "mma": { "type": "string" }, "score": { "type": "number", "format": "double" }
+        }
+      },
+      "SearchResponse": {
+        "type": "object",
+        "properties": {
+          "query_canonical": { "type": "string" },
+          "exact": { "type": "array", "items": { "$ref": "#/components/schemas/Hit" } },
+          "fuzzy": { "type": "array", "items": { "$ref": "#/components/schemas/Hit" } },
+          "error": { "type": "string" }
+        }
+      },
+      "FacetCount": {
+        "type": "object",
+        "properties": { "facet": { "type": "string" }, "count": { "type": "integer" } }
+      },
+      "FacetResponse": {
+        "type": "object",
+        "properties": {
+          "selected": { "type": "array", "items": { "type": "string" } },
+          "total": { "type": "integer" },
+          "limit": { "type": "integer" },
+          "refine": { "type": "array", "items": { "$ref": "#/components/schemas/FacetCount" } },
+          "hits": { "type": "array", "items": { "$ref": "#/components/schemas/Hit" } }
+        }
+      },
+      "Credentials": {
+        "type": "object", "required": ["username", "password"],
+        "properties": { "username": { "type": "string" }, "password": { "type": "string" } }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "properties": { "token": { "type": "string" }, "expires_in": { "type": "integer" } }
+      },
+      "FormulaInput": {
+        "type": "object", "required": ["id"],
+        "properties": {
+          "id": { "type": "string" }, "label": { "type": "string" },
+          "source": { "type": "string" }, "class": { "type": "string" },
+          "latex": { "type": "string" }, "lhs": { "type": "string" }, "rhs": { "type": "string" }
+        }
+      },
+      "AddResult": {
+        "type": "object",
+        "properties": { "indexed": { "type": "integer" }, "signatures": { "type": "object", "additionalProperties": { "type": "string" } } }
+      },
+      "Proof": {
+        "type": "object",
+        "properties": {
+          "entry_id": { "type": "string" }, "system": { "type": "string" },
+          "status": { "type": "string" }, "proof": { "type": "string" }
+        }
+      },
+      "ProofInput": {
+        "type": "object", "required": ["system", "proof"],
+        "properties": {
+          "system": { "type": "string", "enum": ["lean4", "coq", "rocq"] },
+          "status": { "type": "string", "enum": ["none", "draft", "verified", "failed"] },
+          "proof": { "type": "string" }
+        }
+      }
+    }
+  }
+}
