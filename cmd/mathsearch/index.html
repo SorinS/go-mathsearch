@@ -115,9 +115,12 @@ function hit(r) {
   const div = document.createElement("div");
   div.className = "hit";
 
-  // LaTeX (rendered) with a copy of the raw LaTeX source.
-  if (r.latex) {
-    div.appendChild(copyField("LaTeX", r.latex, body => renderMath(body, r.latex)));
+  // LaTeX (rendered) with a copy of the raw LaTeX source. Prefer the full
+  // identity generated from the AST (always both sides), falling back to the
+  // corpus LaTeX.
+  const latex = r.identity_latex || r.latex;
+  if (latex) {
+    div.appendChild(copyField("LaTeX", latex, body => renderMath(body, latex)));
   }
   // Mathematica — the full identity (lhs == rhs) so it reads sensibly even when
   // only one side matched.

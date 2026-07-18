@@ -346,16 +346,17 @@ func (s *server) handlePutProof(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------------------
 
 type hitJSON struct {
-	EntryID     string             `json:"entry_id"`
-	Side        string             `json:"side"`
-	Label       string             `json:"label"`
-	Class       string             `json:"class"`
-	LaTeX       string             `json:"latex"`
-	MMA         string             `json:"mma"`
-	IdentityMMA string             `json:"identity_mma"`
-	Signature   string             `json:"signature"`
-	Score       float64            `json:"score"`
-	Occurrences []store.Occurrence `json:"occurrences,omitempty"`
+	EntryID       string             `json:"entry_id"`
+	Side          string             `json:"side"`
+	Label         string             `json:"label"`
+	Class         string             `json:"class"`
+	LaTeX         string             `json:"latex"`
+	MMA           string             `json:"mma"`
+	IdentityMMA   string             `json:"identity_mma"`
+	IdentityLaTeX string             `json:"identity_latex"`
+	Signature     string             `json:"signature"`
+	Score         float64            `json:"score"`
+	Occurrences   []store.Occurrence `json:"occurrences,omitempty"`
 }
 
 func toHits(rs []store.Result) []hitJSON {
@@ -363,7 +364,8 @@ func toHits(rs []store.Result) []hitJSON {
 	for _, r := range rs {
 		out = append(out, hitJSON{
 			EntryID: r.EntryID, Side: r.Side, Label: r.Label,
-			Class: r.Class, LaTeX: r.LaTeX, MMA: r.MMA, IdentityMMA: r.IdentityMMA,
+			Class: r.Class, LaTeX: r.LaTeX, MMA: r.MMA,
+			IdentityMMA: r.IdentityMMA, IdentityLaTeX: r.IdentityLaTeX,
 			Signature: r.Signature, Score: r.Score, Occurrences: r.Occurrences,
 		})
 	}

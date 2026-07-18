@@ -20,6 +20,7 @@ import (
 
 	canonical "sorins/canonical"
 	"sorins/mathsearch/feature"
+	"sorins/mathsearch/latexfmt"
 
 	_ "modernc.org/sqlite"
 )
@@ -64,14 +65,17 @@ type Occurrence struct {
 // one side matched or the LaTeX is one-sided.
 type Result struct {
 	Formula
-	Score       float64      `json:"score"`
-	IdentityMMA string       `json:"identity_mma,omitempty"`
-	Occurrences []Occurrence `json:"occurrences,omitempty"`
+	Score         float64      `json:"score"`
+	IdentityMMA   string       `json:"identity_mma,omitempty"`
+	IdentityLaTeX string       `json:"identity_latex,omitempty"`
+	Occurrences   []Occurrence `json:"occurrences,omitempty"`
 }
 
-// fillIdentities populates IdentityMMA for each result by fetching both sides of
-// its entry. The result set is small (post-collapse, post-limit), so the extra
-// per-hit lookups are cheap.
+// fillIdentities populates IdentityMMA and IdentityLaTeX for each result by
+// fetching both sides of its entry: the Mathematica identity (lhs == rhs) and a
+// LaTeX rendering generated from the parsed AST (always complete, unlike the
+// corpus's sometimes one-sided LaTeX). The result set is small (post-collapse,
+// post-limit), so the extra per-hit work is cheap.
 func (s *Store) fillIdentities(rs []Result) {
 	for i := range rs {
 		lhs, rhs := s.entrySides(rs[i].EntryID)
@@ -83,7 +87,27 @@ func (s *Store) fillIdentities(rs []Result) {
 		default:
 			rs[i].IdentityMMA = rhs
 		}
+		rs[i].IdentityLaTeX = latexIdentity(lhs, rhs)
 	}
+}
+
+// latexIdentity renders "lhs = rhs" in LaTeX from the two Mathematica sides,
+// each parsed with go-canonical. A side that fails to parse is omitted.
+func latexIdentity(lhsMMA, rhsMMA string) string {
+	lhs := parseSide(lhsMMA)
+	rhs := parseSide(rhsMMA)
+	return latexfmt.Identity(lhs, rhs)
+}
+
+func parseSide(mma string) *canonical.Expr {
+	if mma == "" {
+		return nil
+	}
+	e, err := canonical.Parse(mma)
+	if err != nil {
+		return nil
+	}
+	return e
 }
 
 func (s *Store) entrySides(entryID string) (lhs, rhs string) {
