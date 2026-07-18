@@ -349,10 +349,10 @@ type hitJSON struct {
 	EntryID     string             `json:"entry_id"`
 	Side        string             `json:"side"`
 	Label       string             `json:"label"`
-	Source      string             `json:"source"`
 	Class       string             `json:"class"`
 	LaTeX       string             `json:"latex"`
 	MMA         string             `json:"mma"`
+	IdentityMMA string             `json:"identity_mma"`
 	Signature   string             `json:"signature"`
 	Score       float64            `json:"score"`
 	Occurrences []store.Occurrence `json:"occurrences,omitempty"`
@@ -362,9 +362,9 @@ func toHits(rs []store.Result) []hitJSON {
 	out := make([]hitJSON, 0, len(rs))
 	for _, r := range rs {
 		out = append(out, hitJSON{
-			EntryID: r.EntryID, Side: r.Side, Label: r.Label, Source: r.Source,
-			Class: r.Class, LaTeX: r.LaTeX, MMA: r.MMA, Signature: r.Signature,
-			Score: r.Score, Occurrences: r.Occurrences,
+			EntryID: r.EntryID, Side: r.Side, Label: r.Label,
+			Class: r.Class, LaTeX: r.LaTeX, MMA: r.MMA, IdentityMMA: r.IdentityMMA,
+			Signature: r.Signature, Score: r.Score, Occurrences: r.Occurrences,
 		})
 	}
 	return out

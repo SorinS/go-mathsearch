@@ -30,10 +30,18 @@
   .chip.sel { background: #2563eb; color: #fff; border-color: #2563eb; }
   .chip .n { opacity: .6; margin-left: .3rem; font-size: .8em; }
   .count { font-weight: 600; margin: .5rem 0; }
-  .hit { padding: .7rem 0; border-bottom: 1px solid rgba(128,128,128,.25); }
-  .hit .math { overflow-x: auto; }
-  .meta { font-size: .8rem; opacity: .65; margin-top: .3rem; font-family: ui-monospace, monospace; }
+  .hit { padding: .8rem 0; border-bottom: 1px solid rgba(128,128,128,.25); }
+  .field { margin: .35rem 0; }
+  .field-head { display: flex; align-items: center; gap: .5rem;
+                font-size: .72rem; text-transform: uppercase; letter-spacing: .04em; opacity: .55; }
+  .field-head button { padding: .1rem .5rem; font-size: .7rem; border-radius: 5px;
+                       text-transform: none; letter-spacing: 0; }
+  .field-body { overflow-x: auto; }
+  .field-body code { font-family: ui-monospace, monospace; font-size: .85rem; white-space: pre-wrap;
+                     word-break: break-word; }
+  .meta { font-size: .78rem; opacity: .55; margin-top: .35rem; font-family: ui-monospace, monospace; }
   .score { display: inline-block; min-width: 3.2em; }
+  .occ { font-size: .75rem; opacity: .6; margin-top: .2rem; }
   .exact .hit { background: rgba(0,160,0,.08); }
   .err { color: #c00; }
 </style>
@@ -83,17 +91,53 @@ function renderMath(el, latex) {
   catch (e) { el.textContent = s; }
 }
 
+// A reusable labeled field with a copy-to-clipboard button. bodyFn fills the
+// body element (rendered math, code, ...); copyText is what the button copies.
+// Add or remove calls to copyField to change which representations are shown.
+function copyField(label, copyText, bodyFn) {
+  const wrap = document.createElement("div"); wrap.className = "field";
+  const head = document.createElement("div"); head.className = "field-head";
+  const name = document.createElement("span"); name.textContent = label;
+  const btn = document.createElement("button"); btn.type = "button"; btn.textContent = "copy";
+  btn.onclick = async () => {
+    try { await navigator.clipboard.writeText(copyText); btn.textContent = "copied ✓"; }
+    catch (e) { btn.textContent = "copy failed"; }
+    setTimeout(() => { btn.textContent = "copy"; }, 1200);
+  };
+  head.appendChild(name); head.appendChild(btn);
+  const body = document.createElement("div"); body.className = "field-body";
+  bodyFn(body);
+  wrap.appendChild(head); wrap.appendChild(body);
+  return wrap;
+}
+
 function hit(r) {
   const div = document.createElement("div");
   div.className = "hit";
-  const math = document.createElement("div"); math.className = "math";
-  renderMath(math, r.latex); div.appendChild(math);
+
+  // LaTeX (rendered) with a copy of the raw LaTeX source.
+  if (r.latex) {
+    div.appendChild(copyField("LaTeX", r.latex, body => renderMath(body, r.latex)));
+  }
+  // Mathematica — the full identity (lhs == rhs) so it reads sensibly even when
+  // only one side matched.
+  const mma = r.identity_mma || r.mma || "";
+  if (mma) {
+    div.appendChild(copyField("Mathematica", mma, body => {
+      const code = document.createElement("code"); code.textContent = mma; body.appendChild(code);
+    }));
+  }
+
   const meta = document.createElement("div"); meta.className = "meta";
-  meta.innerHTML = (r.score != null ? `<span class="score">${r.score.toFixed(3)}</span> ` : "")
-    + `${r.entry_id}.${r.side} · ${r.class || "?"} · ${r.source || ""}`;
+  meta.textContent = (r.score != null ? r.score.toFixed(3) + " · " : "")
+    + `${r.entry_id} · ${r.class || "?"}`;
   div.appendChild(meta);
-  const mma = document.createElement("div"); mma.className = "meta"; mma.textContent = r.mma;
-  div.appendChild(mma);
+
+  if (r.occurrences && r.occurrences.length > 1) {
+    const occ = document.createElement("div"); occ.className = "occ";
+    occ.textContent = "also appears as: " + r.occurrences.map(o => o.entry_id + "." + o.side).join(", ");
+    div.appendChild(occ);
+  }
   return div;
 }
 

@@ -59,11 +59,50 @@ type Occurrence struct {
 
 // Result is a search hit with a relevance score (1.0 for exact). Rows sharing
 // a signature are collapsed into one Result whose Occurrences list every place
-// the formula appears (its cross-corpus duplicates).
+// the formula appears (its cross-corpus duplicates). IdentityMMA is the full
+// identity (lhs == rhs) in Mathematica, so a hit reads sensibly even when only
+// one side matched or the LaTeX is one-sided.
 type Result struct {
 	Formula
 	Score       float64      `json:"score"`
+	IdentityMMA string       `json:"identity_mma,omitempty"`
 	Occurrences []Occurrence `json:"occurrences,omitempty"`
+}
+
+// fillIdentities populates IdentityMMA for each result by fetching both sides of
+// its entry. The result set is small (post-collapse, post-limit), so the extra
+// per-hit lookups are cheap.
+func (s *Store) fillIdentities(rs []Result) {
+	for i := range rs {
+		lhs, rhs := s.entrySides(rs[i].EntryID)
+		switch {
+		case lhs != "" && rhs != "":
+			rs[i].IdentityMMA = lhs + " == " + rhs
+		case lhs != "":
+			rs[i].IdentityMMA = lhs
+		default:
+			rs[i].IdentityMMA = rhs
+		}
+	}
+}
+
+func (s *Store) entrySides(entryID string) (lhs, rhs string) {
+	rows, err := s.db.Query(`SELECT side, mma FROM formulas WHERE entry_id = ?`, entryID)
+	if err != nil {
+		return "", ""
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var side, mma string
+		if rows.Scan(&side, &mma) == nil {
+			if side == "lhs" {
+				lhs = mma
+			} else if side == "rhs" {
+				rhs = mma
+			}
+		}
+	}
+	return lhs, rhs
 }
 
 // collapse merges results that share a signature, keeping the first (highest
@@ -418,6 +457,7 @@ func (s *Store) Facets(selected []string, listLimit int) (total int, refine []Fa
 			return 0, nil, nil, err
 		}
 		hits = collapse(hits)
+		s.fillIdentities(hits)
 	}
 	return total, refine, hits, nil
 }
@@ -514,7 +554,9 @@ func (s *Store) Exact(sig string) ([]Result, error) {
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	return collapse(out), nil
+	res := collapse(out)
+	s.fillIdentities(res)
+	return res, nil
 }
 
 // Fuzzy retrieves candidates by BM25 over shared feature tokens and re-ranks
@@ -555,6 +597,7 @@ func (s *Store) Fuzzy(queryTokens []string, limit, pool int) ([]Result, error) {
 	if len(out) > limit {
 		out = out[:limit]
 	}
+	s.fillIdentities(out)
 	return out, nil
 }
 
