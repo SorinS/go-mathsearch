@@ -384,7 +384,8 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func cmdProof(args []string) error {
 	fs := flag.NewFlagSet("proof", flag.ExitOnError)
-	dbPath := fs.String("db", "mathsearch.db", "SQLite database path")
+	cfgPath := fs.String("config", "", "config JSON path")
+	dbPath := fs.String("db", "", "SQLite path (overrides config)")
 	set := fs.String("set", "", "path to a proof file to attach (else print the stored proof)")
 	system := fs.String("system", "lean4", "proof system: lean4 | coq | rocq")
 	status := fs.String("status", "draft", "proof status: none | draft | verified | failed")
@@ -394,7 +395,14 @@ func cmdProof(args []string) error {
 	}
 	entryID := fs.Arg(0)
 
-	st, err := store.Open(*dbPath)
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		return err
+	}
+	if *dbPath != "" {
+		cfg.Database = *dbPath
+	}
+	st, err := store.Open(cfg.Database)
 	if err != nil {
 		return err
 	}

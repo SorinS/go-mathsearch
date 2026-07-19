@@ -64,12 +64,17 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, `usage:
-  mathsearch ingest -db f.db  <corpus.json | dir> ...
-  mathsearch search -db f.db  "<formula>"
-  mathsearch serve  -db f.db  -addr :8080
-  mathsearch proof  -db f.db  <entry_id> [-set file -system lean4 -status draft]
-  mathsearch version`)
+	fmt.Fprintln(os.Stderr, `usage: every subcommand accepts -config conf.json (and -db overrides it)
+
+  mathsearch ingest [-config c.json] [-db f.db] [<corpus.json | dir | glob> ...]
+  mathsearch search [-config c.json] [-db f.db] "<formula>"
+  mathsearch serve  [-config c.json] [-db f.db] [-addr :8080]
+  mathsearch dedup  [-config c.json] [-db f.db]
+  mathsearch proof  [-config c.json] [-db f.db] <entry_id> [-set file -system lean4 -status draft]
+  mathsearch hashpw "<password>"
+  mathsearch version
+
+With -config and no corpus arguments, ingest uses the config's corpus.roots.`)
 }
 
 // ---------------------------------------------------------------------------
@@ -90,14 +95,28 @@ type entry struct {
 
 func cmdIngest(args []string) error {
 	fs := flag.NewFlagSet("ingest", flag.ExitOnError)
-	dbPath := fs.String("db", "mathsearch.db", "SQLite database path")
+	cfgPath := fs.String("config", "", "config JSON path")
+	dbPath := fs.String("db", "", "SQLite path (overrides config)")
 	rebuild := fs.Bool("rebuild", false, "force a full rebuild")
 	fs.Parse(args)
-	if fs.NArg() == 0 {
-		return fmt.Errorf("ingest needs at least one corpus file or directory")
+
+	cfg, err := config.Load(*cfgPath)
+	if err != nil {
+		return err
+	}
+	if *dbPath != "" {
+		cfg.Database = *dbPath
+	}
+	// Targets: positional args, else the config's corpus roots.
+	targets := fs.Args()
+	if len(targets) == 0 {
+		targets = cfg.Corpus.Roots
+	}
+	if len(targets) == 0 {
+		return fmt.Errorf("ingest needs a corpus file/directory (argument or config corpus.roots)")
 	}
 
-	st, err := store.Open(*dbPath)
+	st, err := store.Open(cfg.Database)
 	if err != nil {
 		return err
 	}
@@ -117,7 +136,7 @@ func cmdIngest(args []string) error {
 		}
 	}
 
-	paths, err := expand(fs.Args())
+	paths, err := expand(targets)
 	if err != nil {
 		return err
 	}
@@ -193,10 +212,21 @@ func cmdIngest(args []string) error {
 	return nil
 }
 
-// expand turns files and directories into a sorted list of JSON file paths.
+// expand turns files, directories, and globs into a sorted list of JSON file
+// paths. A leading ~ is expanded to the home directory, and a target containing
+// glob metacharacters (e.g. "*.verified.json") is expanded as a pattern.
 func expand(targets []string) ([]string, error) {
 	var out []string
 	for _, t := range targets {
+		t = expandHome(t)
+		if strings.ContainsAny(t, "*?[") {
+			m, err := filepath.Glob(t)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, m...)
+			continue
+		}
 		info, err := os.Stat(t)
 		if err != nil {
 			return nil, err
@@ -213,6 +243,16 @@ func expand(targets []string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// expandHome replaces a leading ~ with the user's home directory.
+func expandHome(p string) string {
+	if p == "~" || strings.HasPrefix(p, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, strings.TrimPrefix(p, "~"))
+		}
+	}
+	return p
 }
 
 // ---------------------------------------------------------------------------

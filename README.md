@@ -58,12 +58,16 @@ mathsearch dedup  -db mathsearch.db
 
 ## Configuration
 
-Everything is driven by a JSON config (see `config.example.json`), loaded with
-`-config`. Flags (`-db`, `-addr`) override it; `MATHSEARCH_JWT_SECRET` overrides
-the JWT secret from the environment.
+Everything is driven by a JSON config (see `config.example.json`), and **every
+subcommand accepts `-config`**. Flags (`-db`, `-addr`) override config values;
+`MATHSEARCH_JWT_SECRET` overrides the JWT secret from the environment. With
+`-config` and no corpus arguments, `ingest` uses the config's `corpus.roots`
+(paths may use `~` and globs).
 
 ```
-mathsearch serve -config config.json
+mathsearch ingest -config config.json      # ingest the configured corpus roots
+mathsearch serve  -config config.json
+mathsearch search -config config.json "Sin[x]/x"
 ```
 
 ## HTTP API
